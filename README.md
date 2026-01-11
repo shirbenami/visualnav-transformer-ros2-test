@@ -1,57 +1,224 @@
-# General Navigation Models: GNM, ViNT and NoMaD
+# visualnav-transformer-ros2 + SJTU Drone  
+**Quick & Practical README**
 
-This repository is a port of [visualnav-transformer](https://github.com/robodhruv/visualnav-transformer) to ROS2. Its purpose is to make running the models more straightforward by providing a Dockerfile with all dependencies set up. For more details on the models, please refer to the original repository.
+This guide explains how to run **visualnav-transformer-ros2** inside Docker and adapt it to the **SJTU Drone** setup.
 
-### Running the code
+The models (GNM / ViNT / NoMaD) predict **visual waypoints** from camera images.  
+Actual robot motion is handled by a separate script that converts waypoints into `cmd_vel`.
 
-1. Clone the repository:
+
+## Prerequisites (Host)
+
+- Docker installed  
+- NVIDIA GPU + NVIDIA Container Runtime (if using GPU)  
+- ROS2 running and publishing the drone topics  
+- Matching `ROS_DOMAIN_ID` between host and container - export ROS_DOMAIN_ID=0
+- X11 enabled (for visualization windows)
+
+
+## 1) First-Time Run (with GUI)
+
+### 1.1 Allow Docker access to X11 (host)
 ```bash
-git clone https://github.com/RobotecAI/visualnav-transformer-ros2
-cd visualnav-transformer-ros2
+xhost +local:root
 ```
 
-2. Build the Docker image:
+### 1.2 Run the container
 ```bash
-docker build -t visualnav_transformer:latest .
+docker run -it --rm \
+  --gpus all \
+  --net=host \
+  -e DISPLAY=$DISPLAY \
+  -e ROS_DOMAIN_ID=23 \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  visualnav_transformer:latest
 ```
 
-3. Run the Docker container:
+### 1.3 Verify ROS topics
+Inside the container:
 ```bash
-docker run -it --env ROS_DOMAIN_ID=$ROS_DOMAIN_ID --rm --gpus=all --net=host visualnav_transformer:latest
+ros2 topic list
 ```
 
-4. Run the model:
+---
 
-Inside the container, run the following commands:
+## 2) Adapt Topics for SJTU Drone
+
+### 2.1 Update camera image topic
 ```bash
-poetry shell
-python src/visualnav_transformer/deployment/src/explore.py
+sed -i 's|IMAGE_TOPIC = ".*"|IMAGE_TOPIC = "/simple_drone/front/image_raw"|' \
+src/visualnav_transformer/deployment/src/topic_names.py
+
+grep IMAGE_TOPIC src/visualnav_transformer/deployment/src/topic_names.py
 ```
-This will run the model and publish the predicted waypoints to a ROS2 topic, but your robot will not move yet. Next to running the model you have to run a script that will publish the movement commands to the robot.
+
+### 2.2 Update velocity command topic
+```bash
+sed -i 's|self.publisher = self.create_publisher(Twist, "/cmd_vel", 10)|self.publisher = self.create_publisher(Twist, "/simple_drone/cmd_vel", 10)|' \
+scripts/publish_cmd.py
+
+grep create_publisher scripts/publish_cmd.py
+```
+
+---
+
+## 3) Install Python Dependencies (Poetry)
 
 ```bash
-python scripts/publish_cmd.py
+poetry --version
+poetry install
 ```
 
-Now the robot should start moving based on the model's predictions.
-
-To visualize the waypoints that the model is outputting you can run the following command:
+Optional (editor inside container):
 ```bash
-python scripts/visualize.py
+apt update
+apt install -y nano
 ```
-A window should appear with the camera image and the model outputs updated in real time.
 
-### Creating a topomap of the environment
+---
 
-In order to navigate to a desired goal location, the robot needs to have a map of the environment. To create a topomap of the environment, you can run the following command:
+## 4) Explore Mode (Waypoint Prediction)
+
+### 4.1 Run the model
 ```bash
-python src/visualnav_transformer/deployment/src/create_topomap.py
+poetry run python3 src/visualnav_transformer/deployment/src/explore.py
 ```
-The script will save an image from the camera every second (this interval can be changed with the `-t` parameter). Now you can drive the robot around the environment manually (using your navigation stack or teleop) and the map will be saved automatically. After you have driven around the environment, you can stop the script and proceed to the next step.
 
-### Navigation
-Having created a topomap of the environment, you can now run the navigation script:
+### 4.2 Verify waypoints are published
+In another terminal:
 ```bash
-python src/visualnav_transformer/deployment/src/navigate.py
+ros2 topic echo /waypoint
 ```
-By default the robot will try to follow the topomap to reach the last image captured. You can specify a different goal image by providing an index of an image in the topomap using the `--goal-node` parameter.
+
+---
+
+## 5) Enable Robot Motion (cmd_vel)
+
+In a separate terminal inside the container:
+```bash
+poetry run python3 scripts/publish_cmd.py
+```
+
+---
+
+## 6) Visualization (Model Output)
+
+In another terminal:
+```bash
+poetry run python3 scripts/visualize.py
+```
+
+A window should appear showing:
+- Current camera image
+- Colored waypoint trajectories predicted by the model
+
+---
+
+## 7) Create a Topomap (Visual Map)
+
+### 7.1 Record topomap while driving manually
+```bash
+poetry run python3 src/visualnav_transformer/deployment/src/create_topomap.py -t 1
+```
+
+- Saves one image per second (`-t` controls the interval)
+- Drive the drone manually using teleop or your navigation stack
+
+### 7.2 Verify images were saved
+```bash
+ls topomaps/images/topomap/
+```
+
+---
+
+## 8) Navigation Using the Topomap
+
+```bash
+poetry run python3 src/visualnav_transformer/deployment/src/navigate.py
+```
+
+- Default goal: last image in the topomap
+- To select a different goal image:
+```bash
+poetry run python3 src/visualnav_transformer/deployment/src/navigate.py --goal-node <N>
+```
+
+---
+
+## 9) Typical Workflow (4 Terminals)
+
+1) **Navigation**
+```bash
+poetry run python3 src/visualnav_transformer/deployment/src/navigate.py
+```
+```bash
+poetry run python3 src/visualnav_transformer/deployment/src/navigate_new.py   --model nomad   --dir topomap   --goal-node -1   --goal-x -5.499710   --goal-y 7.285320   --snap-x -7.433326   --snap-y 0.593377   --progress-margin 0.3   --record-bag   --bag-name run_001_bag
+```
+
+2) **Velocity Publisher**
+```bash
+poetry run python3 scripts/publish_cmd.py
+```
+
+3) **Visualization**
+```bash
+poetry run python3 scripts/visualize.py
+```
+
+4) **Topomap Creation (only when needed)**
+```bash
+poetry run python3 src/visualnav_transformer/deployment/src/create_topomap.py -t 1
+```
+
+5) **save altitude script:**
+```bash
+ poetry run python3 altitude_mux.py 
+```
+
+***from the sjtu docker - 
+5) **run the map with the drone traj:**
+
+```bash
+cd /ros2_ws/maps
+python3 show_drone_trajectory.py
+```
+
+
+---
+
+## 10) Save Your Changes (Docker Commit)
+
+After the first setup and topic modifications, save the container state:
+
+On the host:
+```bash
+docker ps
+docker commit <CONTAINER_ID> visualnav_transformer:latest
+```
+
+From now on, running the container will include all SJTU Drone adaptations.
+
+---
+
+## Common Issues
+
+**No visualization window**
+- Ensure on host:
+```bash
+xhost +local:root
+```
+- Inside container:
+```bash
+echo $DISPLAY
+```
+
+**Waypoints published but robot does not move**
+- Verify `publish_cmd.py` publishes to `/simple_drone/cmd_vel`
+- Confirm the drone subscribes to this topic
+
+**No camera images**
+- Double-check `IMAGE_TOPIC` matches the SJTU Drone camera topic exactly
+
+---
+
+Happy navigating 🤖🚀

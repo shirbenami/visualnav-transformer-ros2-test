@@ -58,7 +58,8 @@ class VelPublisher(Node):
         )
 
         # Publisher
-        self.publisher = self.create_publisher(Twist, "/cmd_vel", 10)
+        #self.publisher = self.create_publisher(Twist, "/cmd_vel", 10)
+        self.publisher = self.create_publisher(Twist, "/simple_drone/cmd_vel_nav", 10)
 
         self.bridge = CvBridge()
         self.latest_image = None
