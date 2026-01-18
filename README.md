@@ -199,6 +199,16 @@ docker commit <CONTAINER_ID> visualnav_transformer:latest
 From now on, running the container will include all SJTU Drone adaptations.
 
 ---
+examples of navigate to the car:
+<img width="700" height="700" alt="Figure_1_" src="https://github.com/user-attachments/assets/dcad0bc5-da3e-45a2-902f-6c0248a8aa77" />
+<img width="700" height="700" alt="Figure_1_2" src="https://github.com/user-attachments/assets/80ca18d9-6e13-446d-9849-a53768479f48" />
+<img width="3037" height="1281" alt="image" src="https://github.com/user-attachments/assets/ff4d7e2d-27fe-4462-85d1-cd5c8cff632a" />
+
+
+
+https://github.com/user-attachments/assets/f8f74cc5-5a03-4806-8c80-9e83c7136501
+
+
 
 ## Common Issues
 
